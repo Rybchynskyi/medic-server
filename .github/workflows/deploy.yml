@@ -34,7 +34,12 @@ jobs:
         run: |
           set -ex
           ssh -v -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 \
-            "$DEPLOY_USER@$DEPLOY_HOST" "echo 'SSH connection OK, running as:'; whoami; pwd"
+            "$DEPLOY_USER@$DEPLOY_HOST" "
+              export PATH=/usr/local/php84/bin:\$PATH
+              echo 'SSH connection OK, running as:'; whoami; pwd
+              echo 'php:'; which php; php -v
+              echo 'composer:'; which composer || echo 'composer not in PATH'
+            "
 
       - name: Deploy
         env:
@@ -46,6 +51,7 @@ jobs:
           set -ex
           ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" -o StrictHostKeyChecking=accept-new "$DEPLOY_USER@$DEPLOY_HOST" "
             set -ex
+            export PATH=/usr/local/php84/bin:\$PATH
             cd '$DEPLOY_PATH'
             echo '>>> git pull'
             git pull origin main

@@ -24,4 +24,12 @@ class OrganizationRepository extends CoreRepository
     {
         return $this->model->orderBy('name')->get();
     }
+
+    public function allWithCounts()
+    {
+        return $this->model
+            ->withCount(['users', 'services', 'materials', 'periods'])
+            ->orderBy('name')
+            ->get();
+    }
 }

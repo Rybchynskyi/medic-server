@@ -12,6 +12,15 @@ class OrganizationPresenter extends CorePresenter
             'identifier' => $organization->identifier,
             'name' => $organization->name,
             'createdAt' => $organization->created_at,
+            'usersCount' => $organization->users_count ?? null,
+            'servicesCount' => $organization->services_count ?? null,
+            'materialsCount' => $organization->materials_count ?? null,
+            'periodsCount' => $organization->periods_count ?? null,
         ];
+    }
+
+    public function includeUsers(Organization $organization): array
+    {
+        return $this->includeMany($organization->users, UserForAdminPresenter::class);
     }
 }

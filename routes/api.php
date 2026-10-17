@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\OrganizationsController;
 use App\Http\Controllers\Admin\UsersController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\PeriodsController;
+use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ServicesController;
 use Illuminate\Support\Facades\Route;
 
@@ -15,6 +16,8 @@ Route::post('/login', [LoginController::class, 'login']);
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', [LoginController::class, 'user']);
     Route::post('/logout', [LoginController::class, 'logout']);
+    Route::put('/user/profile', [ProfileController::class, 'update']);
+    Route::put('/user/password', [ProfileController::class, 'updatePassword']);
 
     Route::middleware('module:'.ModuleKeys::MATERIALS_CALCULATOR)->group(function () {
         Route::get('/services', [ServicesController::class, 'index']);
@@ -40,6 +43,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::get('/organizations', [OrganizationsController::class, 'index']);
         Route::post('/organizations', [OrganizationsController::class, 'store']);
+        Route::get('/organizations/{identifier}', [OrganizationsController::class, 'show']);
         Route::put('/organizations/{identifier}', [OrganizationsController::class, 'update']);
         Route::delete('/organizations/{identifier}', [OrganizationsController::class, 'destroy']);
 

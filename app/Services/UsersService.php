@@ -69,6 +69,20 @@ class UsersService extends CoreService
         $this->usersRepository->delete($user);
     }
 
+    public function updateOwnProfile(User $user, string $name): User
+    {
+        $user->name = $name;
+        $this->usersRepository->save($user);
+
+        return $user;
+    }
+
+    public function updateOwnPassword(User $user, string $password): void
+    {
+        $user->password = $password;
+        $this->usersRepository->save($user);
+    }
+
     public function toggleModule(User $user, string $moduleKey, bool $enabled): User
     {
         $this->moduleService->toggleForUser($user, $moduleKey, $enabled);

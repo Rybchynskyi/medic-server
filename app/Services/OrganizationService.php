@@ -14,7 +14,7 @@ class OrganizationService extends CoreService
 
     public function all(): Collection
     {
-        return $this->organizationRepository->all();
+        return $this->organizationRepository->allWithCounts();
     }
 
     public function create(array $data): Organization
@@ -25,6 +25,14 @@ class OrganizationService extends CoreService
     public function findByIdentifierOrFail(string $identifier): Organization
     {
         return $this->organizationRepository->findByIdentifierOrFail($identifier);
+    }
+
+    public function findByIdentifierWithDetailsOrFail(string $identifier): Organization
+    {
+        $organization = $this->organizationRepository->findByIdentifierOrFail($identifier, ['users.roles', 'users.modules']);
+        $organization->loadCount(['users', 'services', 'materials', 'periods']);
+
+        return $organization;
     }
 
     public function update(Organization $organization, array $data): Organization

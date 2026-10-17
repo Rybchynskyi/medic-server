@@ -19,6 +19,13 @@ class OrganizationsController extends Controller
         return $this->present($this->organizationService->all(), OrganizationPresenter::class);
     }
 
+    public function show(string $identifier)
+    {
+        $organization = $this->organizationService->findByIdentifierWithDetailsOrFail($identifier);
+
+        return $this->present($organization, OrganizationPresenter::class, ['users']);
+    }
+
     public function store(CreateOrganizationRequest $request)
     {
         $organization = $this->organizationService->create($request->validated());

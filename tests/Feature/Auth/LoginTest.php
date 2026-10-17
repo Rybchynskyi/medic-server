@@ -49,4 +49,15 @@ class LoginTest extends TestCase
 
         $response->assertStatus(401);
     }
+
+    public function test_guest_without_json_accept_header_gets_json_401_not_a_login_redirect(): void
+    {
+        // Regression test: this app has no named "login" route, so Laravel's
+        // default redirect-to-login behavior for non-JSON requests must not
+        // be triggered — see bootstrap/app.php.
+        $response = $this->get('/api/user');
+
+        $response->assertStatus(401);
+        $response->assertHeader('Content-Type', 'application/json');
+    }
 }

@@ -19,6 +19,12 @@ jobs:
           echo
           echo "(this IP is different on every run — GitHub Actions uses a large dynamic range, see https://api.github.com/meta under the 'actions' key)"
 
+      - name: Diagnose Network to Hosting
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq traceroute
+          traceroute 91.206.201.238 || true
+          nc -zv 91.206.201.238 22 || true
+
       - name: Prepare SSH
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}

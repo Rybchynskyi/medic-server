@@ -11,6 +11,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Show outbound IP
+        run: |
+          set -ex
+          echo "This GitHub Actions runner's outbound IP address:"
+          curl -s https://api.ipify.org
+          echo
+          echo "(this IP is different on every run — GitHub Actions uses a large dynamic range, see https://api.github.com/meta under the 'actions' key)"
+
       - name: Prepare SSH
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}

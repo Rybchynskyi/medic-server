@@ -11,27 +11,49 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy over SSH
+      - name: Prepare SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -ex
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$DEPLOY_PORT" "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+          echo "known_hosts content:"
+          cat ~/.ssh/known_hosts
+
+      - name: Test SSH connection
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          set -ex
+          ssh -v -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 \
+            "$DEPLOY_USER@$DEPLOY_HOST" "echo 'SSH connection OK, running as:'; whoami; pwd"
+
+      - name: Deploy
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
-          set -e
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          echo "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -p "$DEPLOY_PORT" "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-
-          ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" "
-            set -e
+          set -ex
+          ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" -o StrictHostKeyChecking=accept-new "$DEPLOY_USER@$DEPLOY_HOST" "
+            set -ex
             cd '$DEPLOY_PATH'
+            echo '>>> git pull'
             git pull origin main
+            echo '>>> composer install'
             composer install --no-dev --optimize-autoloader --no-interaction
+            echo '>>> migrate'
             php artisan migrate --force
+            echo '>>> cache'
             php artisan config:cache
             php artisan route:cache
             php artisan view:cache

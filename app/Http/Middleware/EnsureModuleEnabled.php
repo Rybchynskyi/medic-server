@@ -12,7 +12,7 @@ class EnsureModuleEnabled
     {
         $user = $request->user();
 
-        if (! $user || (! $user->hasRole('admin') && ! $user->hasModuleEnabled($moduleKey))) {
+        if (! $user || ! $user->organization_id || ! $user->hasModuleEnabled($moduleKey)) {
             return response()->json([
                 'message' => 'Модуль недоступний. Зверніться до адміністратора.',
             ], 403);

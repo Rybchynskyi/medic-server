@@ -152,4 +152,13 @@ class PeriodCalculationTest extends TestCase
 
         $this->getJson('/api/periods')->assertForbidden();
     }
+
+    public function test_admin_without_organization_is_forbidden_instead_of_crashing(): void
+    {
+        $admin = User::factory()->create(['organization_id' => null]);
+        $admin->syncRoles([RoleNames::ADMIN]);
+        $this->actingAs($admin);
+
+        $this->getJson('/api/periods')->assertForbidden();
+    }
 }

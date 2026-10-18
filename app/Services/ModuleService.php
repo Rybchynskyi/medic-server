@@ -29,6 +29,24 @@ class ModuleService extends CoreService
         return $module;
     }
 
+    public function setEnabledForNewOrganizations(string $moduleKey, bool $enabled): Module
+    {
+        $module = $this->findByKeyOrFail($moduleKey);
+        $module->enabled_for_new_organizations = $enabled;
+        $this->moduleRepository->save($module);
+
+        return $module;
+    }
+
+    public function enableDefaultsForUser(User $user): void
+    {
+        $modules = $this->moduleRepository->enabledForNewOrganizations();
+
+        $user->modules()->syncWithoutDetaching(
+            $modules->mapWithKeys(fn (Module $module) => [$module->id => ['enabled' => true]])->all()
+        );
+    }
+
     public function toggleForUser(User $user, string $moduleKey, bool $enabled): void
     {
         $module = $this->findByKeyOrFail($moduleKey);

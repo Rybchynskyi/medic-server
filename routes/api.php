@@ -6,12 +6,20 @@ use App\Http\Controllers\Admin\ModulesController;
 use App\Http\Controllers\Admin\OrganizationsController;
 use App\Http\Controllers\Admin\UsersController;
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Auth\PasswordResetController;
+use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\PeriodsController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ServicesController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [LoginController::class, 'login']);
+
+Route::middleware('throttle:6,1')->group(function () {
+    Route::post('/register', [RegisterController::class, 'register']);
+    Route::post('/forgot-password', [PasswordResetController::class, 'sendResetLink']);
+    Route::post('/reset-password', [PasswordResetController::class, 'reset']);
+});
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', [LoginController::class, 'user']);
@@ -40,6 +48,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/users/{identifier}/modules/{moduleKey}', [UsersController::class, 'toggleModule']);
 
         Route::get('/modules', [ModulesController::class, 'index']);
+        Route::put('/modules/{moduleKey}', [ModulesController::class, 'update'])
+            ->whereIn('moduleKey', ModuleKeys::getValues());
 
         Route::get('/organizations', [OrganizationsController::class, 'index']);
         Route::post('/organizations', [OrganizationsController::class, 'store']);

@@ -15,4 +15,9 @@ class ModuleRepository extends CoreRepository
     {
         return $this->model->where('key', $key)->first();
     }
+
+    public function enabledForNewOrganizations()
+    {
+        return $this->model->where('enabled_for_new_organizations', true)->get();
+    }
 }

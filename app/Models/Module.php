@@ -11,7 +11,15 @@ class Module extends Model
         'key',
         'name',
         'description',
+        'enabled_for_new_organizations',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'enabled_for_new_organizations' => 'boolean',
+        ];
+    }
 
     public function users(): BelongsToMany
     {

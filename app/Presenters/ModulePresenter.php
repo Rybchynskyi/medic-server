@@ -12,6 +12,7 @@ class ModulePresenter extends CorePresenter
             'key' => $module->key,
             'name' => $module->name,
             'description' => $module->description,
+            'enabledForNewOrganizations' => $module->enabled_for_new_organizations,
         ];
     }
 }

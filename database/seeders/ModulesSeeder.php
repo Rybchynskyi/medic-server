@@ -12,7 +12,10 @@ class ModulesSeeder extends Seeder
     {
         Module::updateOrCreate(
             ['key' => ModuleKeys::MATERIALS_CALCULATOR],
-            ['name' => ModuleKeys::getTitle(ModuleKeys::MATERIALS_CALCULATOR)]
+            [
+                'name' => ModuleKeys::getTitle(ModuleKeys::MATERIALS_CALCULATOR),
+                'enabled_for_new_organizations' => true,
+            ]
         );
     }
 }

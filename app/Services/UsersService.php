@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Repositories\OrganizationRepository;
 use App\Repositories\UsersRepository;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 
 class UsersService extends CoreService
 {
@@ -38,6 +39,27 @@ class UsersService extends CoreService
         $user->syncRoles([$data['role'] ?? RoleNames::USER]);
 
         return $user;
+    }
+
+    public function register(array $data): User
+    {
+        return DB::transaction(function () use ($data) {
+            $organization = $this->organizationRepository->create([
+                'name' => $data['organizationName'],
+            ]);
+
+            $user = $this->usersRepository->create([
+                'organization_id' => $organization->id,
+                'name' => $data['name'],
+                'email' => $data['email'],
+                'password' => $data['password'],
+            ]);
+
+            $user->syncRoles([RoleNames::USER]);
+            $this->moduleService->enableDefaultsForUser($user);
+
+            return $user;
+        });
     }
 
     public function update(User $user, array $data): User

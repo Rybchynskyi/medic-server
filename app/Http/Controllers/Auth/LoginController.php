@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Auth;
 
+use App\Enums\UserStatuses;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Presenters\UserPresenter;
@@ -14,6 +15,16 @@ class LoginController extends Controller
     {
         if (! Auth::attempt($request->only('email', 'password'))) {
             return response()->json(['message' => 'Невірний email або пароль.'], 401);
+        }
+
+        // Checked after the password so the status isn't revealed to someone who doesn't know it.
+        $user = Auth::user();
+        if (! $user->isActive()) {
+            Auth::guard('web')->logout();
+
+            return $this->forbiddenResponse($user->status === UserStatuses::PENDING
+                ? 'Ваша заявка ще очікує підтвердження адміністратором.'
+                : 'Доступ до системи для цього облікового запису закрито.');
         }
 
         $request->session()->regenerate();

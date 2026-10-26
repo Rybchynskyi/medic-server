@@ -18,7 +18,8 @@ class CreateUserRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'unique:users,email'],
-            'password' => ['required', 'string', 'min:6'],
+            // Empty means "send an invitation to set their own password".
+            'password' => ['nullable', 'string', 'min:6'],
             'role' => ['required', Rule::in(RoleNames::getValues())],
             'organizationIdentifier' => ['nullable', 'string', 'exists:organizations,identifier'],
         ];

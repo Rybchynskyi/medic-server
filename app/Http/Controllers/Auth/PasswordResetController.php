@@ -23,7 +23,10 @@ class PasswordResetController extends Controller
 
     public function reset(ResetPasswordRequest $request)
     {
-        $status = Password::reset(
+        // Invitation links come from the longer-lived invites broker; both share one token table.
+        $broker = Password::broker($request->boolean('invite') ? 'invites' : null);
+
+        $status = $broker->reset(
             $request->only('email', 'password', 'password_confirmation', 'token'),
             function (User $user, string $password) {
                 $user->password = $password;

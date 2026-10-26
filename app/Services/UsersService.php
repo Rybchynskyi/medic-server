@@ -3,11 +3,18 @@
 namespace App\Services;
 
 use App\Enums\RoleNames;
+use App\Enums\UserStatuses;
 use App\Models\User;
+use App\Notifications\AccessGranted;
+use App\Notifications\Invitation;
+use App\Notifications\NewRegistrationRequest;
 use App\Repositories\OrganizationRepository;
 use App\Repositories\UsersRepository;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Notifications\Notification;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Str;
 
 class UsersService extends CoreService
 {
@@ -27,13 +34,18 @@ class UsersService extends CoreService
         return $this->usersRepository->findByIdentifierOrFail($identifier, ['organization', 'roles', 'modules']);
     }
 
+    /**
+     * Without a password the caller is expected to send an invitation (see sendInvitation).
+     */
     public function create(array $data): User
     {
         $user = $this->usersRepository->create([
             'organization_id' => $this->resolveOrganizationId($data['organizationIdentifier'] ?? null),
             'name' => $data['name'],
             'email' => $data['email'],
-            'password' => $data['password'],
+            'status' => UserStatuses::ACTIVE,
+            // Unguessable placeholder until the invitation is accepted.
+            'password' => $data['password'] ?? Str::random(40),
         ]);
 
         $user->syncRoles([$data['role'] ?? RoleNames::USER]);
@@ -41,17 +53,24 @@ class UsersService extends CoreService
         return $user;
     }
 
+    /**
+     * Self-registration creates a pending user who can't log in until an admin approves.
+     * The organization is found by its EDRPOU code, or created if it isn't registered yet.
+     */
     public function register(array $data): User
     {
-        return DB::transaction(function () use ($data) {
-            $organization = $this->organizationRepository->create([
-                'name' => $data['organizationName'],
-            ]);
+        $user = DB::transaction(function () use ($data) {
+            $organization = $this->organizationRepository->findOneBy(['edrpou' => $data['edrpou']])
+                ?? $this->organizationRepository->create([
+                    'name' => $data['organizationName'],
+                    'edrpou' => $data['edrpou'],
+                ]);
 
             $user = $this->usersRepository->create([
                 'organization_id' => $organization->id,
                 'name' => $data['name'],
                 'email' => $data['email'],
+                'status' => UserStatuses::PENDING,
                 'password' => $data['password'],
             ]);
 
@@ -60,6 +79,40 @@ class UsersService extends CoreService
 
             return $user;
         });
+
+        $user->load('organization');
+        foreach ($this->usersRepository->admins() as $admin) {
+            $this->sendMail($admin, new NewRegistrationRequest($user));
+        }
+
+        return $user;
+    }
+
+    /**
+     * @return bool whether the "access granted" email was sent
+     */
+    public function approve(User $user): bool
+    {
+        $user->status = UserStatuses::ACTIVE;
+        $this->usersRepository->save($user);
+
+        return $this->sendMail($user, new AccessGranted);
+    }
+
+    public function reject(User $user): void
+    {
+        $user->status = UserStatuses::REJECTED;
+        $this->usersRepository->save($user);
+    }
+
+    /**
+     * @return bool whether the invitation email was sent
+     */
+    public function sendInvitation(User $user): bool
+    {
+        $token = Password::broker('invites')->createToken($user);
+
+        return $this->sendMail($user, new Invitation($token));
     }
 
     public function update(User $user, array $data): User
@@ -110,6 +163,22 @@ class UsersService extends CoreService
         $this->moduleService->toggleForUser($user, $moduleKey, $enabled);
 
         return $user->refresh();
+    }
+
+    /**
+     * A mail server outage must not break the action that triggered the email.
+     */
+    private function sendMail(User $user, Notification $notification): bool
+    {
+        try {
+            $user->notify($notification);
+
+            return true;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return false;
+        }
     }
 
     private function resolveOrganizationId(?string $identifier): ?int

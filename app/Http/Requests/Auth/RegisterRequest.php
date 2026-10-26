@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\Auth;
 
+use App\Models\Organization;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class RegisterRequest extends FormRequest
 {
@@ -15,7 +17,12 @@ class RegisterRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
-            'organizationName' => ['required', 'string', 'max:255'],
+            'edrpou' => ['required', 'digits:8'],
+            // Only needed when this EDRPOU isn't registered yet; otherwise the user joins the existing organization.
+            'organizationName' => [
+                Rule::requiredIf(fn () => ! Organization::where('edrpou', $this->input('edrpou'))->exists()),
+                'nullable', 'string', 'max:255',
+            ],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:6', 'confirmed'],
         ];
@@ -25,6 +32,7 @@ class RegisterRequest extends FormRequest
     {
         return [
             'name' => 'ім\'я',
+            'edrpou' => 'код ЄДРПОУ',
             'organizationName' => 'назва установи',
             'email' => 'email',
             'password' => 'пароль',

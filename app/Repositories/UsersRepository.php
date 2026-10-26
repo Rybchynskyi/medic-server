@@ -2,6 +2,7 @@
 
 namespace App\Repositories;
 
+use App\Enums\RoleNames;
 use App\Models\User;
 
 class UsersRepository extends CoreRepository
@@ -23,5 +24,10 @@ class UsersRepository extends CoreRepository
     public function allWithRelations()
     {
         return $this->model->with(['organization', 'roles', 'modules'])->orderBy('name')->get();
+    }
+
+    public function admins()
+    {
+        return $this->model->role(RoleNames::ADMIN)->get();
     }
 }

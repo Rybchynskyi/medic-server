@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\UserStatuses;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -22,6 +23,7 @@ class User extends Authenticatable
         'organization_id',
         'name',
         'email',
+        'status',
         'password',
     ];
 
@@ -48,6 +50,11 @@ class User extends Authenticatable
         return $this->belongsToMany(Module::class, 'user_modules')
             ->withPivot('enabled')
             ->withTimestamps();
+    }
+
+    public function isActive(): bool
+    {
+        return $this->status === UserStatuses::ACTIVE;
     }
 
     public function hasModuleEnabled(string $moduleKey): bool

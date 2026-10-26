@@ -15,6 +15,14 @@ class CreateOrganizationRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
+            'edrpou' => ['required', 'digits:8', 'unique:organizations,edrpou'],
+        ];
+    }
+
+    public function attributes(): array
+    {
+        return [
+            'edrpou' => 'код ЄДРПОУ',
         ];
     }
 }

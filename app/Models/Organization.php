@@ -10,6 +10,7 @@ class Organization extends Model
     protected $fillable = [
         'identifier',
         'name',
+        'edrpou',
     ];
 
     public function users(): HasMany

@@ -11,6 +11,7 @@ class OrganizationPresenter extends CorePresenter
         return [
             'identifier' => $organization->identifier,
             'name' => $organization->name,
+            'edrpou' => $organization->edrpou,
             'createdAt' => $organization->created_at,
             'usersCount' => $organization->users_count ?? null,
             'servicesCount' => $organization->services_count ?? null,

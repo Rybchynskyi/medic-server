@@ -21,7 +21,7 @@ Route::middleware('throttle:6,1')->group(function () {
     Route::post('/reset-password', [PasswordResetController::class, 'reset']);
 });
 
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::get('/user', [LoginController::class, 'user']);
     Route::post('/logout', [LoginController::class, 'logout']);
     Route::put('/user/profile', [ProfileController::class, 'update']);
@@ -44,6 +44,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/users', [UsersController::class, 'index']);
         Route::post('/users', [UsersController::class, 'store']);
         Route::put('/users/{identifier}', [UsersController::class, 'update']);
+        Route::post('/users/{identifier}/approve', [UsersController::class, 'approve']);
+        Route::post('/users/{identifier}/reject', [UsersController::class, 'reject']);
+        Route::post('/users/{identifier}/invite', [UsersController::class, 'invite']);
         Route::delete('/users/{identifier}', [UsersController::class, 'destroy']);
         Route::put('/users/{identifier}/modules/{moduleKey}', [UsersController::class, 'toggleModule']);
 

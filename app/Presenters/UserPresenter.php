@@ -15,6 +15,7 @@ class UserPresenter extends CorePresenter
             'organization' => $user->organization ? [
                 'identifier' => $user->organization->identifier,
                 'name' => $user->organization->name,
+                'edrpou' => $user->organization->edrpou,
             ] : null,
             'roles' => $user->roles->pluck('name'),
             'modules' => $user->modules

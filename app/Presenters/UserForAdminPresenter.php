@@ -12,9 +12,11 @@ class UserForAdminPresenter extends CorePresenter
             'identifier' => $user->identifier,
             'name' => $user->name,
             'email' => $user->email,
+            'status' => $user->status,
             'organization' => $user->organization ? [
                 'identifier' => $user->organization->identifier,
                 'name' => $user->organization->name,
+                'edrpou' => $user->organization->edrpou,
             ] : null,
             'roles' => $user->roles->pluck('name'),
             'modules' => $user->modules->map(fn ($module) => [

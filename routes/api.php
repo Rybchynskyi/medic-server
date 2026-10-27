@@ -36,6 +36,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::post('/periods/{identifier}/close', [PeriodsController::class, 'close']);
         Route::get('/periods/{identifier}/export', [PeriodsController::class, 'export']);
         Route::post('/periods/{identifier}/entries', [PeriodsController::class, 'storeEntry']);
+        Route::put('/periods/{identifier}/entries', [PeriodsController::class, 'syncEntries']);
         Route::put('/periods/{identifier}/entries/{entryIdentifier}', [PeriodsController::class, 'updateEntry']);
         Route::delete('/periods/{identifier}/entries/{entryIdentifier}', [PeriodsController::class, 'destroyEntry']);
     });

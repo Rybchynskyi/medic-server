@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Models\Period;
-use App\Repositories\PeriodMaterialTotalRepository;
+use Illuminate\Support\Collection;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
@@ -17,14 +17,8 @@ class PeriodExportService extends CoreService
         9 => 'Вересень', 10 => 'Жовтень', 11 => 'Листопад', 12 => 'Грудень',
     ];
 
-    public function __construct(
-        private readonly PeriodMaterialTotalRepository $periodMaterialTotalRepository
-    ) {}
-
-    public function buildSpreadsheet(Period $period): Spreadsheet
+    public function buildSpreadsheet(Period $period, Collection $totals): Spreadsheet
     {
-        $totals = $this->periodMaterialTotalRepository->allForPeriod($period->id);
-
         $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Результат');
@@ -34,6 +28,9 @@ class PeriodExportService extends CoreService
         $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
 
         $periodLabel = sprintf('Звітний період: %s %d', self::MONTH_NAMES[$period->month], $period->year);
+        if ($period->isOpen()) {
+            $periodLabel .= ' (попередній розрахунок, період не закрито)';
+        }
         $sheet->setCellValue('A2', $periodLabel);
         $sheet->mergeCells('A2:C2');
         $sheet->getStyle('A2')->getFont()->setItalic(true);

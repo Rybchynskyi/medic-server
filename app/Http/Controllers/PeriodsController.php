@@ -4,13 +4,16 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Period\OpenPeriodRequest;
 use App\Http\Requests\Period\StoreEntryRequest;
+use App\Http\Requests\Period\SyncEntriesRequest;
 use App\Http\Requests\Period\UpdateEntryRequest;
+use App\Models\Period;
 use App\Presenters\Period\PeriodPresenter;
 use App\Repositories\PeriodEntryRepository;
 use App\Repositories\ServiceRepository;
 use App\Services\PeriodExportService;
 use App\Services\PeriodsService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class PeriodsController extends Controller
@@ -46,11 +49,38 @@ class PeriodsController extends Controller
         $period = $this->periodsService->findByIdentifierForOrganizationOrFail(
             $identifier,
             $request->user()->organization,
-            ['entries.service', 'materialTotals.material']
+            ['entries.service']
         );
         $this->authorize('hasAccess', $period);
 
-        return $this->present($period, PeriodPresenter::class, ['entries', 'materialTotals']);
+        return $this->presentWithTotals($period);
+    }
+
+    public function syncEntries(SyncEntriesRequest $request, string $identifier)
+    {
+        $period = $this->periodsService->findByIdentifierForOrganizationOrFail($identifier, $request->user()->organization);
+        $this->authorize('canEdit', $period);
+
+        $items = collect($request->validated('entries'));
+        $services = $this->serviceRepository
+            ->findByIdentifiersForOrganization($items->pluck('serviceIdentifier')->all(), $request->user()->organization_id)
+            ->keyBy('identifier');
+
+        if ($services->count() !== $items->count()) {
+            throw ValidationException::withMessages([
+                'entries' => 'Деякі послуги не знайдено в довіднику організації. Оновіть сторінку.',
+            ]);
+        }
+
+        $quantities = $items
+            ->mapWithKeys(fn ($item) => [$services[$item['serviceIdentifier']]->id => (float) ($item['quantity'] ?? 0)])
+            ->all();
+
+        $this->periodsService->syncEntries($period, $quantities);
+
+        $period = $this->periodsService->findByIdentifierForOrganizationOrFail($identifier, $request->user()->organization, ['entries.service']);
+
+        return $this->presentWithTotals($period, 'Кількості збережено.');
     }
 
     public function storeEntry(StoreEntryRequest $request, string $identifier)
@@ -116,9 +146,7 @@ class PeriodsController extends Controller
         $period = $this->periodsService->findByIdentifierForOrganizationOrFail($identifier, $request->user()->organization, ['organization']);
         $this->authorize('hasAccess', $period);
 
-        abort_if($period->isOpen(), 422, 'Період ще не закрито.');
-
-        $spreadsheet = $this->periodExportService->buildSpreadsheet($period);
+        $spreadsheet = $this->periodExportService->buildSpreadsheet($period, $this->periodsService->materialTotalsFor($period));
         $fileName = $this->periodExportService->buildFileName($period);
         $writer = new Xlsx($spreadsheet);
 
@@ -127,5 +155,12 @@ class PeriodsController extends Controller
         }, $fileName, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ]);
+    }
+
+    private function presentWithTotals(Period $period, ?string $message = null)
+    {
+        $period->setRelation('materialTotals', $this->periodsService->materialTotalsFor($period));
+
+        return $this->present($period, PeriodPresenter::class, ['entries', 'materialTotals'], $message);
     }
 }

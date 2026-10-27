@@ -21,6 +21,6 @@ class ServiceMaterialNormRepository extends CoreRepository
 
     public function findByServiceIds(array $serviceIds)
     {
-        return $this->model->whereIn('service_id', $serviceIds)->get();
+        return $this->model->with('material')->whereIn('service_id', $serviceIds)->get();
     }
 }

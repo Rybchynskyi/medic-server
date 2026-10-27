@@ -125,23 +125,85 @@ class PeriodCalculationTest extends TestCase
         ])->assertForbidden();
     }
 
-    public function test_export_is_only_available_after_closing(): void
+    public function test_export_is_available_for_open_and_closed_periods(): void
     {
         $this->actingAs($this->user);
 
         $period = $this->postJson('/api/periods', ['month' => 3, 'year' => 2026])->json();
 
-        $this->get("/api/periods/{$period['identifier']}/export")->assertStatus(422);
-
         $this->postJson("/api/periods/{$period['identifier']}/entries", [
             'serviceIdentifier' => $this->serviceA->identifier,
             'quantity' => 1,
         ])->assertOk();
-        $this->postJson("/api/periods/{$period['identifier']}/close")->assertOk();
 
         $this->get("/api/periods/{$period['identifier']}/export")
             ->assertOk()
             ->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
+        $this->postJson("/api/periods/{$period['identifier']}/close")->assertOk();
+
+        $this->get("/api/periods/{$period['identifier']}/export")->assertOk();
+    }
+
+    public function test_sync_entries_sets_quantities_and_returns_live_totals(): void
+    {
+        $this->actingAs($this->user);
+
+        $period = $this->postJson('/api/periods', ['month' => 4, 'year' => 2026])->json();
+        $url = "/api/periods/{$period['identifier']}/entries";
+
+        $this->putJson($url, ['entries' => [
+            ['serviceIdentifier' => $this->serviceA->identifier, 'quantity' => 2],
+            ['serviceIdentifier' => $this->serviceB->identifier, 'quantity' => 1],
+        ]])->assertOk()->assertJsonCount(2, 'entries');
+
+        // Re-saving replaces quantities instead of adding duplicate rows; 0 removes the service.
+        $response = $this->putJson($url, ['entries' => [
+            ['serviceIdentifier' => $this->serviceA->identifier, 'quantity' => 4],
+            ['serviceIdentifier' => $this->serviceB->identifier, 'quantity' => 0],
+        ]]);
+        $response->assertOk();
+        $response->assertJsonPath('status', 'open');
+        $response->assertJsonCount(1, 'entries');
+        $response->assertJsonPath('entries.0.quantity', 4);
+
+        $totals = collect($response->json('materialTotals'))->keyBy(fn ($row) => $row['material']['identifier']);
+        // Вата: 4 × 3 = 12; Спирт: 4 × 1.3 = 5.2
+        $this->assertEquals(12, $totals[$this->gauze->identifier]['totalQuantity']);
+        $this->assertEquals(5.2, $totals[$this->alcohol->identifier]['totalQuantity']);
+
+        $this->getJson("/api/periods/{$period['identifier']}")
+            ->assertOk()
+            ->assertJsonCount(2, 'materialTotals');
+    }
+
+    public function test_sync_entries_rejects_services_of_another_organization(): void
+    {
+        $this->actingAs($this->user);
+
+        $otherOrganization = Organization::create(['identifier' => 'org000000002', 'name' => 'Інша лікарня']);
+        $foreignService = Service::create([
+            'identifier' => 'svcX00000001', 'organization_id' => $otherOrganization->id,
+            'code' => '061', 'name' => 'Чужа послуга',
+        ]);
+
+        $period = $this->postJson('/api/periods', ['month' => 5, 'year' => 2026])->json();
+
+        $this->putJson("/api/periods/{$period['identifier']}/entries", ['entries' => [
+            ['serviceIdentifier' => $foreignService->identifier, 'quantity' => 1],
+        ]])->assertStatus(422);
+    }
+
+    public function test_sync_entries_is_forbidden_for_closed_period(): void
+    {
+        $this->actingAs($this->user);
+
+        $period = $this->postJson('/api/periods', ['month' => 6, 'year' => 2026])->json();
+        $this->postJson("/api/periods/{$period['identifier']}/close")->assertOk();
+
+        $this->putJson("/api/periods/{$period['identifier']}/entries", ['entries' => [
+            ['serviceIdentifier' => $this->serviceA->identifier, 'quantity' => 1],
+        ]])->assertForbidden();
     }
 
     public function test_user_without_enabled_module_is_forbidden(): void

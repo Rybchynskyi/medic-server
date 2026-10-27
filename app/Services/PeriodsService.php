@@ -6,6 +6,7 @@ use App\Enums\Period\PeriodStatuses;
 use App\Models\Organization;
 use App\Models\Period;
 use App\Models\PeriodEntry;
+use App\Models\PeriodMaterialTotal;
 use App\Models\User;
 use App\Repositories\PeriodEntryRepository;
 use App\Repositories\PeriodMaterialTotalRepository;
@@ -79,34 +80,84 @@ class PeriodsService extends CoreService
         $this->periodEntryRepository->delete($entry);
     }
 
-    public function close(Period $period): Period
+    /**
+     * Sets the quantity of each given service for the period: one entry per service, removed when quantity is 0.
+     *
+     * @param  array<int, float>  $quantitiesByServiceId
+     */
+    public function syncEntries(Period $period, array $quantitiesByServiceId): void
     {
-        DB::transaction(function () use ($period) {
-            $entries = $this->periodEntryRepository->allForPeriod($period->id);
+        DB::transaction(function () use ($period, $quantitiesByServiceId) {
+            $this->periodEntryRepository->deleteForPeriodAndServices($period->id, array_keys($quantitiesByServiceId));
 
-            $serviceIds = $entries->pluck('service_id')->unique()->values()->all();
-            $norms = $this->serviceMaterialNormRepository->findByServiceIds($serviceIds);
-            $normsByService = $norms->groupBy('service_id');
-
-            $totals = [];
-            foreach ($entries as $entry) {
-                foreach ($normsByService->get($entry->service_id, []) as $norm) {
-                    $totals[$norm->material_id] = ($totals[$norm->material_id] ?? 0)
-                        + ((float) $entry->quantity * (float) $norm->quantity_per_service);
+            foreach ($quantitiesByServiceId as $serviceId => $quantity) {
+                if ($quantity > 0) {
+                    $this->addEntry($period, $serviceId, $quantity);
                 }
             }
+        });
+    }
 
-            $rows = [];
-            $now = now();
-            foreach ($totals as $materialId => $totalQuantity) {
-                $rows[] = [
+    /**
+     * Stored totals for a closed period; for an open one they are calculated from the current entries.
+     */
+    public function materialTotalsFor(Period $period): Collection
+    {
+        if (! $period->isOpen()) {
+            return $this->periodMaterialTotalRepository->allForPeriod($period->id);
+        }
+
+        return $this->calculateTotals($period);
+    }
+
+    /**
+     * Sums entry quantity × norm per material. Returns unsaved PeriodMaterialTotal models with the material loaded.
+     */
+    public function calculateTotals(Period $period): Collection
+    {
+        $entries = $this->periodEntryRepository->allForPeriod($period->id);
+
+        $serviceIds = $entries->pluck('service_id')->unique()->values()->all();
+        $normsByService = $this->serviceMaterialNormRepository->findByServiceIds($serviceIds)->groupBy('service_id');
+
+        $totals = [];
+        $materials = [];
+        foreach ($entries as $entry) {
+            foreach ($normsByService->get($entry->service_id, []) as $norm) {
+                $totals[$norm->material_id] = ($totals[$norm->material_id] ?? 0)
+                    + ((float) $entry->quantity * (float) $norm->quantity_per_service);
+                $materials[$norm->material_id] = $norm->material;
+            }
+        }
+
+        return collect($totals)
+            ->map(function ($totalQuantity, $materialId) use ($period, $materials) {
+                $total = new PeriodMaterialTotal([
                     'period_id' => $period->id,
                     'material_id' => $materialId,
                     'total_quantity' => round($totalQuantity, 4),
+                ]);
+                $total->setRelation('material', $materials[$materialId]);
+
+                return $total;
+            })
+            ->sortBy(fn (PeriodMaterialTotal $total) => mb_strtolower($total->material->name))
+            ->values();
+    }
+
+    public function close(Period $period): Period
+    {
+        DB::transaction(function () use ($period) {
+            $now = now();
+            $rows = $this->calculateTotals($period)
+                ->map(fn (PeriodMaterialTotal $total) => [
+                    'period_id' => $period->id,
+                    'material_id' => $total->material_id,
+                    'total_quantity' => $total->total_quantity,
                     'created_at' => $now,
                     'updated_at' => $now,
-                ];
-            }
+                ])
+                ->all();
 
             if (! empty($rows)) {
                 $this->periodMaterialTotalRepository->createMany($rows);

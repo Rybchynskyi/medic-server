@@ -7,11 +7,15 @@ use App\Repositories\MaterialRepository;
 use App\Repositories\ServiceMaterialNormRepository;
 use App\Repositories\ServiceRepository;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Validation\ValidationException;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 class MaterialNormsImportService extends CoreService
 {
+    /** Sheet names (Cyrillic and Latin spelling) that hold the norms in calculation workbooks. */
+    private const NORMS_SHEET_NAMES = ['МАТ', 'MAT'];
+
     public function __construct(
         private readonly ServiceRepository $serviceRepository,
         private readonly MaterialRepository $materialRepository,
@@ -20,45 +24,42 @@ class MaterialNormsImportService extends CoreService
 
     /**
      * Imports "Норми витрат матеріалів": Код послуги | Найменування послуги | Найменування матеріалу | Одиниця виміру | Витрати на 1 послугу.
-     * The service code must already exist (imported from "Перелік послуг" beforehand).
+     * Reads the "МАТ" sheet when the workbook has one, otherwise the active sheet.
+     * Services missing from the directory are created from the code and name in the file.
      */
     public function import(Organization $organization, UploadedFile $file): int
     {
         $spreadsheet = IOFactory::load($file->getRealPath());
-        $rows = array_slice($spreadsheet->getActiveSheet()->toArray(null, true, false, false), 1);
-
-        $missingCodes = [];
-        foreach ($rows as $row) {
-            $code = isset($row[0]) ? trim((string) $row[0]) : '';
-
-            if ($code === '') {
-                continue;
-            }
-
-            if (! $this->serviceRepository->findByOrganizationAndCode($organization->id, $code)) {
-                $missingCodes[$code] = true;
-            }
-        }
-
-        if (! empty($missingCodes)) {
-            throw ValidationException::withMessages([
-                'file' => 'Відсутні послуги з кодами: '.implode(', ', array_keys($missingCodes)).'. Спочатку імпортуйте «Перелік послуг».',
-            ]);
-        }
+        $rows = array_slice($this->resolveSheet($spreadsheet)->toArray(null, true, false, false), 1);
 
         $imported = 0;
 
         foreach ($rows as $row) {
             $code = isset($row[0]) ? trim((string) $row[0]) : '';
+            $serviceName = isset($row[1]) ? trim((string) $row[1]) : '';
             $materialName = isset($row[2]) ? trim((string) $row[2]) : '';
             $unit = isset($row[3]) ? trim((string) $row[3]) : '';
             $quantity = $row[4] ?? null;
 
-            if ($code === '' || $materialName === '' || $quantity === null || $quantity === '') {
+            if ($code === '') {
                 continue;
             }
 
             $service = $this->serviceRepository->findByOrganizationAndCode($organization->id, $code);
+            if (! $service) {
+                if ($serviceName === '') {
+                    continue;
+                }
+                $service = $this->serviceRepository->create([
+                    'organization_id' => $organization->id,
+                    'code' => $code,
+                    'name' => $serviceName,
+                ]);
+            }
+
+            if ($materialName === '' || $quantity === null || $quantity === '') {
+                continue;
+            }
 
             $material = $this->materialRepository->findByOrganizationNameAndUnit($organization->id, $materialName, $unit);
             if (! $material) {
@@ -80,5 +81,16 @@ class MaterialNormsImportService extends CoreService
         }
 
         return $imported;
+    }
+
+    private function resolveSheet(Spreadsheet $spreadsheet): Worksheet
+    {
+        foreach ($spreadsheet->getWorksheetIterator() as $sheet) {
+            if (in_array(mb_strtoupper(trim($sheet->getTitle())), self::NORMS_SHEET_NAMES, true)) {
+                return $sheet;
+            }
+        }
+
+        return $spreadsheet->getActiveSheet();
     }
 }

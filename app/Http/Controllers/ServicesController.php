@@ -14,10 +14,9 @@ class ServicesController extends Controller
 
     public function index(Request $request)
     {
-        $services = $this->serviceRepository->search(
-            $request->user()->organization_id,
-            $request->get('search')
-        );
+        $services = $request->boolean('all')
+            ? $this->serviceRepository->allForOrganization($request->user()->organization_id)
+            : $this->serviceRepository->search($request->user()->organization_id, $request->get('search'));
 
         return $this->present($services, ServicePresenter::class);
     }

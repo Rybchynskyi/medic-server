@@ -59,4 +59,12 @@ class ServiceRepository extends CoreRepository
             ->orderBy('code')
             ->get();
     }
+
+    public function findByIdentifiersForOrganization(array $identifiers, int $organizationId): Collection
+    {
+        return $this->model
+            ->where('organization_id', $organizationId)
+            ->whereIn('identifier', $identifiers)
+            ->get();
+    }
 }

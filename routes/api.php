@@ -4,6 +4,7 @@ use App\Enums\ModuleKeys;
 use App\Http\Controllers\Admin\DirectoryImportController;
 use App\Http\Controllers\Admin\ModulesController;
 use App\Http\Controllers\Admin\OrganizationsController;
+use App\Http\Controllers\Admin\OrganizationServicesController;
 use App\Http\Controllers\Admin\UsersController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\PasswordResetController;
@@ -64,5 +65,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::delete('/organizations/{identifier}', [OrganizationsController::class, 'destroy']);
 
         Route::post('/organizations/{identifier}/import/material-norms', [DirectoryImportController::class, 'materialNorms']);
+        Route::get('/organizations/{identifier}/services', [OrganizationServicesController::class, 'index']);
+        Route::get('/organizations/{identifier}/services/{serviceIdentifier}/norms', [OrganizationServicesController::class, 'norms']);
     });
 });

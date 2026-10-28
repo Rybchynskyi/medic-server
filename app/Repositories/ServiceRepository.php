@@ -60,6 +60,15 @@ class ServiceRepository extends CoreRepository
             ->get();
     }
 
+    public function allForOrganizationWithNormsCount(int $organizationId): Collection
+    {
+        return $this->model
+            ->where('organization_id', $organizationId)
+            ->withCount('materialNorms')
+            ->orderBy('code')
+            ->get();
+    }
+
     public function findByIdentifiersForOrganization(array $identifiers, int $organizationId): Collection
     {
         return $this->model

@@ -15,6 +15,7 @@ class Service extends Model
         'name',
         'unit',
         'category',
+        'contract',
     ];
 
     public function organization(): BelongsTo

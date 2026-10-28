@@ -2,8 +2,11 @@
 
 namespace App\Providers;
 
+use App\Support\MailGuard;
 use Illuminate\Auth\Notifications\ResetPassword;
+use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Notifications\Messages\MailMessage;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -21,6 +24,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Event::listen(MessageSending::class, [MailGuard::class, 'handle']);
+
         // The reset form lives in the SPA, not in this API.
         ResetPassword::createUrlUsing(function ($user, string $token) {
             return rtrim(config('app.frontend_url'), '/').'/reset-password?'.http_build_query([

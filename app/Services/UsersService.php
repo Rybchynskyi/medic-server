@@ -10,6 +10,7 @@ use App\Notifications\Invitation;
 use App\Notifications\NewRegistrationRequest;
 use App\Repositories\OrganizationRepository;
 use App\Repositories\UsersRepository;
+use App\Support\MailGuard;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Facades\DB;
@@ -170,6 +171,11 @@ class UsersService extends CoreService
      */
     private function sendMail(User $user, Notification $notification): bool
     {
+        // Checked up front so the caller reports "not sent" instead of a silent drop.
+        if (! MailGuard::allows($user->email)) {
+            return false;
+        }
+
         try {
             $user->notify($notification);
 

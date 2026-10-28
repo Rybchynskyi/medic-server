@@ -4,14 +4,17 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\CreateOrganizationRequest;
+use App\Http\Requests\Admin\ImportClientsRequest;
 use App\Http\Requests\Admin\UpdateOrganizationRequest;
 use App\Presenters\OrganizationPresenter;
+use App\Services\ClientsImportService;
 use App\Services\OrganizationService;
 
 class OrganizationsController extends Controller
 {
     public function __construct(
-        private readonly OrganizationService $organizationService
+        private readonly OrganizationService $organizationService,
+        private readonly ClientsImportService $clientsImportService
     ) {}
 
     public function index()
@@ -39,6 +42,28 @@ class OrganizationsController extends Controller
         $organization = $this->organizationService->update($organization, $request->validated());
 
         return $this->present($organization, OrganizationPresenter::class, [], 'Установу оновлено.');
+    }
+
+    public function importClients(ImportClientsRequest $request)
+    {
+        $result = $this->clientsImportService->import($request->file('file'));
+
+        return $this->successResponse(
+            "Додано нових установ: {$result['created']}, доповнено даними: {$result['updated']}. "
+            ."Пропущено (не «Зареєстровано» у ЄДР): {$result['skipped']}."
+        );
+    }
+
+    public function invite(string $identifier)
+    {
+        $organization = $this->organizationService->invite($this->organizationService->findByIdentifierOrFail($identifier));
+
+        return $this->present(
+            $organization,
+            OrganizationPresenter::class,
+            [],
+            "Запрошення надіслано на {$organization->contact_email}."
+        );
     }
 
     public function destroy(string $identifier)

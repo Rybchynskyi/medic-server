@@ -57,6 +57,8 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
 
         Route::get('/organizations', [OrganizationsController::class, 'index']);
         Route::post('/organizations', [OrganizationsController::class, 'store']);
+        Route::post('/organizations/import-clients', [OrganizationsController::class, 'importClients']);
+        Route::post('/organizations/{identifier}/invite', [OrganizationsController::class, 'invite']);
         Route::get('/organizations/{identifier}', [OrganizationsController::class, 'show']);
         Route::put('/organizations/{identifier}', [OrganizationsController::class, 'update']);
         Route::delete('/organizations/{identifier}', [OrganizationsController::class, 'destroy']);

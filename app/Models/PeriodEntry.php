@@ -12,6 +12,7 @@ class PeriodEntry extends Model
         'period_id',
         'service_id',
         'quantity',
+        'created_by',
     ];
 
     protected function casts(): array
@@ -29,5 +30,10 @@ class PeriodEntry extends Model
     public function service(): BelongsTo
     {
         return $this->belongsTo(Service::class);
+    }
+
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 }

@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Period\OpenPeriodRequest;
 use App\Http\Requests\Period\StoreEntryRequest;
-use App\Http\Requests\Period\SyncEntriesRequest;
 use App\Http\Requests\Period\UpdateEntryRequest;
 use App\Models\Period;
 use App\Presenters\Period\PeriodPresenter;
@@ -46,17 +45,13 @@ class PeriodsController extends Controller
 
     public function show(Request $request, string $identifier)
     {
-        $period = $this->periodsService->findByIdentifierForOrganizationOrFail(
-            $identifier,
-            $request->user()->organization,
-            ['entries.service']
-        );
+        $period = $this->findWithEntries($identifier, $request);
         $this->authorize('hasAccess', $period);
 
         return $this->presentWithTotals($period);
     }
 
-    public function syncEntries(SyncEntriesRequest $request, string $identifier)
+    public function storeEntry(StoreEntryRequest $request, string $identifier)
     {
         $period = $this->periodsService->findByIdentifierForOrganizationOrFail($identifier, $request->user()->organization);
         $this->authorize('canEdit', $period);
@@ -73,31 +68,12 @@ class PeriodsController extends Controller
         }
 
         $quantities = $items
-            ->mapWithKeys(fn ($item) => [$services[$item['serviceIdentifier']]->id => (float) ($item['quantity'] ?? 0)])
+            ->mapWithKeys(fn ($item) => [$services[$item['serviceIdentifier']]->id => (float) $item['quantity']])
             ->all();
 
-        $this->periodsService->syncEntries($period, $quantities);
+        $this->periodsService->addEntries($period, $request->user(), $quantities);
 
-        $period = $this->periodsService->findByIdentifierForOrganizationOrFail($identifier, $request->user()->organization, ['entries.service']);
-
-        return $this->presentWithTotals($period, 'Кількості збережено.');
-    }
-
-    public function storeEntry(StoreEntryRequest $request, string $identifier)
-    {
-        $period = $this->periodsService->findByIdentifierForOrganizationOrFail($identifier, $request->user()->organization);
-        $this->authorize('canEdit', $period);
-
-        $service = $this->serviceRepository->findByIdentifierForOrganization(
-            $request->validated('serviceIdentifier'),
-            $request->user()->organization_id
-        );
-
-        $this->periodsService->addEntry($period, $service->id, (float) $request->validated('quantity'));
-
-        $period = $this->periodsService->findByIdentifierForOrganizationOrFail($identifier, $request->user()->organization, ['entries.service']);
-
-        return $this->present($period, PeriodPresenter::class, ['entries'], 'Послугу додано.');
+        return $this->presentWithTotals($this->findWithEntries($identifier, $request), 'Кількості додано до збережених.');
     }
 
     public function updateEntry(UpdateEntryRequest $request, string $identifier, string $entryIdentifier)
@@ -110,9 +86,7 @@ class PeriodsController extends Controller
 
         $this->periodsService->updateEntry($entry, (float) $request->validated('quantity'));
 
-        $period = $this->periodsService->findByIdentifierForOrganizationOrFail($identifier, $request->user()->organization, ['entries.service']);
-
-        return $this->present($period, PeriodPresenter::class, ['entries'], 'Запис оновлено.');
+        return $this->presentWithTotals($this->findWithEntries($identifier, $request), 'Запис оновлено.');
     }
 
     public function destroyEntry(Request $request, string $identifier, string $entryIdentifier)
@@ -125,9 +99,7 @@ class PeriodsController extends Controller
 
         $this->periodsService->deleteEntry($entry);
 
-        $period = $this->periodsService->findByIdentifierForOrganizationOrFail($identifier, $request->user()->organization, ['entries.service']);
-
-        return $this->present($period, PeriodPresenter::class, ['entries'], 'Запис видалено.');
+        return $this->presentWithTotals($this->findWithEntries($identifier, $request), 'Запис видалено.');
     }
 
     public function close(Request $request, string $identifier)
@@ -135,10 +107,22 @@ class PeriodsController extends Controller
         $period = $this->periodsService->findByIdentifierForOrganizationOrFail($identifier, $request->user()->organization);
         $this->authorize('canEdit', $period);
 
-        $period = $this->periodsService->close($period);
-        $period->load('entries.service', 'materialTotals.material');
+        $this->periodsService->close($period);
 
-        return $this->present($period, PeriodPresenter::class, ['entries', 'materialTotals'], 'Період закрито, розрахунок виконано.');
+        return $this->presentWithTotals($this->findWithEntries($identifier, $request), 'Період закрито, розрахунок виконано.');
+    }
+
+    public function reopen(Request $request, string $identifier)
+    {
+        $period = $this->periodsService->findByIdentifierForOrganizationOrFail($identifier, $request->user()->organization);
+        $this->authorize('canReopen', $period);
+
+        $this->periodsService->reopen($period);
+
+        return $this->presentWithTotals(
+            $this->findWithEntries($identifier, $request),
+            'Період знову відкрито. Після виправлень закрийте його ще раз.'
+        );
     }
 
     public function export(Request $request, string $identifier)
@@ -154,6 +138,16 @@ class PeriodsController extends Controller
             $writer->save('php://output');
         }, $fileName, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
+    /**
+     * Entries come newest first, as a journal of who added what and when.
+     */
+    private function findWithEntries(string $identifier, Request $request): Period
+    {
+        return $this->periodsService->findByIdentifierForOrganizationOrFail($identifier, $request->user()->organization, [
+            'entries' => fn ($query) => $query->with('service', 'creator')->orderByDesc('id'),
         ]);
     }
 

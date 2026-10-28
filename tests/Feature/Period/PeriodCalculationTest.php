@@ -82,15 +82,9 @@ class PeriodCalculationTest extends TestCase
         $openResponse->assertOk();
         $periodIdentifier = $openResponse->json('identifier');
 
-        $this->postJson("/api/periods/{$periodIdentifier}/entries", [
-            'serviceIdentifier' => $this->serviceA->identifier,
-            'quantity' => 2,
-        ])->assertOk();
+        $this->addEntries($periodIdentifier, [$this->serviceA->identifier => 2])->assertOk();
 
-        $this->postJson("/api/periods/{$periodIdentifier}/entries", [
-            'serviceIdentifier' => $this->serviceB->identifier,
-            'quantity' => 1,
-        ])->assertOk();
+        $this->addEntries($periodIdentifier, [$this->serviceB->identifier => 1])->assertOk();
 
         $closeResponse = $this->postJson("/api/periods/{$periodIdentifier}/close");
         $closeResponse->assertOk();
@@ -112,17 +106,11 @@ class PeriodCalculationTest extends TestCase
 
         $period = $this->postJson('/api/periods', ['month' => 2, 'year' => 2026])->json();
 
-        $this->postJson("/api/periods/{$period['identifier']}/entries", [
-            'serviceIdentifier' => $this->serviceA->identifier,
-            'quantity' => 1,
-        ])->assertOk();
+        $this->addEntries($period['identifier'], [$this->serviceA->identifier => 1])->assertOk();
 
         $this->postJson("/api/periods/{$period['identifier']}/close")->assertOk();
 
-        $this->postJson("/api/periods/{$period['identifier']}/entries", [
-            'serviceIdentifier' => $this->serviceB->identifier,
-            'quantity' => 1,
-        ])->assertForbidden();
+        $this->addEntries($period['identifier'], [$this->serviceB->identifier => 1])->assertForbidden();
     }
 
     public function test_export_is_available_for_open_and_closed_periods(): void
@@ -131,10 +119,7 @@ class PeriodCalculationTest extends TestCase
 
         $period = $this->postJson('/api/periods', ['month' => 3, 'year' => 2026])->json();
 
-        $this->postJson("/api/periods/{$period['identifier']}/entries", [
-            'serviceIdentifier' => $this->serviceA->identifier,
-            'quantity' => 1,
-        ])->assertOk();
+        $this->addEntries($period['identifier'], [$this->serviceA->identifier => 1])->assertOk();
 
         $this->get("/api/periods/{$period['identifier']}/export")
             ->assertOk()
@@ -145,39 +130,94 @@ class PeriodCalculationTest extends TestCase
         $this->get("/api/periods/{$period['identifier']}/export")->assertOk();
     }
 
-    public function test_sync_entries_sets_quantities_and_returns_live_totals(): void
+    public function test_each_save_adds_to_saved_quantities_and_is_logged_with_author(): void
     {
         $this->actingAs($this->user);
 
         $period = $this->postJson('/api/periods', ['month' => 4, 'year' => 2026])->json();
-        $url = "/api/periods/{$period['identifier']}/entries";
 
-        $this->putJson($url, ['entries' => [
-            ['serviceIdentifier' => $this->serviceA->identifier, 'quantity' => 2],
-            ['serviceIdentifier' => $this->serviceB->identifier, 'quantity' => 1],
-        ]])->assertOk()->assertJsonCount(2, 'entries');
+        $this->addEntries($period['identifier'], [$this->serviceA->identifier => 2, $this->serviceB->identifier => 1])
+            ->assertOk()
+            ->assertJsonCount(2, 'entries');
 
-        // Re-saving replaces quantities instead of adding duplicate rows; 0 removes the service.
-        $response = $this->putJson($url, ['entries' => [
-            ['serviceIdentifier' => $this->serviceA->identifier, 'quantity' => 4],
-            ['serviceIdentifier' => $this->serviceB->identifier, 'quantity' => 0],
-        ]]);
+        $colleague = User::factory()->create(['name' => 'Колега', 'organization_id' => $this->user->organization_id]);
+        $colleague->syncRoles([RoleNames::USER]);
+        $colleague->modules()->attach(Module::first()->id, ['enabled' => true]);
+
+        $response = $this->actingAs($colleague)->addEntries($period['identifier'], [$this->serviceA->identifier => 2]);
         $response->assertOk();
-        $response->assertJsonPath('status', 'open');
-        $response->assertJsonCount(1, 'entries');
-        $response->assertJsonPath('entries.0.quantity', 4);
+        $response->assertJsonCount(3, 'entries');
+        // Newest first: the colleague's record heads the journal.
+        $response->assertJsonPath('entries.0.quantity', 2);
+        $response->assertJsonPath('entries.0.createdBy', 'Колега');
 
         $totals = collect($response->json('materialTotals'))->keyBy(fn ($row) => $row['material']['identifier']);
-        // Вата: 4 × 3 = 12; Спирт: 4 × 1.3 = 5.2
-        $this->assertEquals(12, $totals[$this->gauze->identifier]['totalQuantity']);
+        // Service A: 2 + 2 = 4. Вата: 4 × 3 + 1 × 5 = 17; Спирт: 4 × 1.3 = 5.2
+        $this->assertEquals(17, $totals[$this->gauze->identifier]['totalQuantity']);
         $this->assertEquals(5.2, $totals[$this->alcohol->identifier]['totalQuantity']);
-
-        $this->getJson("/api/periods/{$period['identifier']}")
-            ->assertOk()
-            ->assertJsonCount(2, 'materialTotals');
     }
 
-    public function test_sync_entries_rejects_services_of_another_organization(): void
+    public function test_deleting_a_wrong_record_recalculates_totals(): void
+    {
+        $this->actingAs($this->user);
+
+        $period = $this->postJson('/api/periods', ['month' => 7, 'year' => 2026])->json();
+        $this->addEntries($period['identifier'], [$this->serviceB->identifier => 1])->assertOk();
+        $wrong = $this->addEntries($period['identifier'], [$this->serviceB->identifier => 50])->json('entries.0');
+
+        $response = $this->deleteJson("/api/periods/{$period['identifier']}/entries/{$wrong['identifier']}");
+        $response->assertOk();
+        $response->assertJsonCount(1, 'entries');
+        $response->assertJsonPath('materialTotals.0.totalQuantity', 5);
+    }
+
+    public function test_correcting_a_record_recalculates_totals(): void
+    {
+        $this->actingAs($this->user);
+
+        $period = $this->postJson('/api/periods', ['month' => 10, 'year' => 2026])->json();
+        $entry = $this->addEntries($period['identifier'], [$this->serviceB->identifier => 10])->json('entries.0');
+        $url = "/api/periods/{$period['identifier']}/entries/{$entry['identifier']}";
+
+        $response = $this->putJson($url, ['quantity' => 7]);
+        $response->assertOk();
+        $response->assertJsonPath('entries.0.quantity', 7);
+        // Вата: 7 × 5 = 35
+        $response->assertJsonPath('materialTotals.0.totalQuantity', 35);
+
+        $this->putJson($url, ['quantity' => 0])->assertStatus(422);
+    }
+
+    public function test_closed_period_can_be_reopened_corrected_and_closed_again(): void
+    {
+        $this->actingAs($this->user);
+
+        $period = $this->postJson('/api/periods', ['month' => 8, 'year' => 2026])->json();
+        $url = "/api/periods/{$period['identifier']}";
+        $this->addEntries($period['identifier'], [$this->serviceB->identifier => 1])->assertOk();
+        $this->postJson("{$url}/close")->assertOk();
+
+        $this->postJson("{$url}/reopen")->assertOk()->assertJsonPath('status', 'open');
+        $this->postJson("{$url}/reopen")->assertForbidden();
+
+        $this->addEntries($period['identifier'], [$this->serviceB->identifier => 1])->assertOk();
+        $response = $this->postJson("{$url}/close");
+        $response->assertOk();
+        $response->assertJsonPath('status', 'closed');
+        $response->assertJsonCount(1, 'materialTotals');
+        $response->assertJsonPath('materialTotals.0.totalQuantity', 10);
+    }
+
+    public function test_zero_quantity_is_rejected(): void
+    {
+        $this->actingAs($this->user);
+
+        $period = $this->postJson('/api/periods', ['month' => 9, 'year' => 2026])->json();
+
+        $this->addEntries($period['identifier'], [$this->serviceA->identifier => 0])->assertStatus(422);
+    }
+
+    public function test_entries_reject_services_of_another_organization(): void
     {
         $this->actingAs($this->user);
 
@@ -189,21 +229,7 @@ class PeriodCalculationTest extends TestCase
 
         $period = $this->postJson('/api/periods', ['month' => 5, 'year' => 2026])->json();
 
-        $this->putJson("/api/periods/{$period['identifier']}/entries", ['entries' => [
-            ['serviceIdentifier' => $foreignService->identifier, 'quantity' => 1],
-        ]])->assertStatus(422);
-    }
-
-    public function test_sync_entries_is_forbidden_for_closed_period(): void
-    {
-        $this->actingAs($this->user);
-
-        $period = $this->postJson('/api/periods', ['month' => 6, 'year' => 2026])->json();
-        $this->postJson("/api/periods/{$period['identifier']}/close")->assertOk();
-
-        $this->putJson("/api/periods/{$period['identifier']}/entries", ['entries' => [
-            ['serviceIdentifier' => $this->serviceA->identifier, 'quantity' => 1],
-        ]])->assertForbidden();
+        $this->addEntries($period['identifier'], [$foreignService->identifier => 1])->assertStatus(422);
     }
 
     public function test_user_without_enabled_module_is_forbidden(): void
@@ -222,5 +248,18 @@ class PeriodCalculationTest extends TestCase
         $this->actingAs($admin);
 
         $this->getJson('/api/periods')->assertForbidden();
+    }
+
+    /**
+     * @param  array<string, float>  $quantitiesByServiceIdentifier
+     */
+    private function addEntries(string $periodIdentifier, array $quantitiesByServiceIdentifier)
+    {
+        $entries = collect($quantitiesByServiceIdentifier)
+            ->map(fn ($quantity, $identifier) => ['serviceIdentifier' => $identifier, 'quantity' => $quantity])
+            ->values()
+            ->all();
+
+        return $this->postJson("/api/periods/{$periodIdentifier}/entries", ['entries' => $entries]);
     }
 }

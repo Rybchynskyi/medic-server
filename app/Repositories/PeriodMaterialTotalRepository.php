@@ -17,6 +17,11 @@ class PeriodMaterialTotalRepository extends CoreRepository
         $this->model->insert($rows);
     }
 
+    public function deleteForPeriod(int $periodId): void
+    {
+        $this->model->where('period_id', $periodId)->delete();
+    }
+
     public function allForPeriod(int $periodId): Collection
     {
         return $this->model->with('material')->where('period_id', $periodId)->get();

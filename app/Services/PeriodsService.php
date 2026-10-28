@@ -58,13 +58,23 @@ class PeriodsService extends CoreService
         ]);
     }
 
-    public function addEntry(Period $period, int $serviceId, float $quantity): PeriodEntry
+    /**
+     * Each save is kept as separate journal records, so quantities add up to what was saved before.
+     *
+     * @param  array<int, float>  $quantitiesByServiceId
+     */
+    public function addEntries(Period $period, User $user, array $quantitiesByServiceId): void
     {
-        return $this->periodEntryRepository->create([
-            'period_id' => $period->id,
-            'service_id' => $serviceId,
-            'quantity' => $quantity,
-        ]);
+        DB::transaction(function () use ($period, $user, $quantitiesByServiceId) {
+            foreach ($quantitiesByServiceId as $serviceId => $quantity) {
+                $this->periodEntryRepository->create([
+                    'period_id' => $period->id,
+                    'service_id' => $serviceId,
+                    'quantity' => $quantity,
+                    'created_by' => $user->id,
+                ]);
+            }
+        });
     }
 
     public function updateEntry(PeriodEntry $entry, float $quantity): PeriodEntry
@@ -78,24 +88,6 @@ class PeriodsService extends CoreService
     public function deleteEntry(PeriodEntry $entry): void
     {
         $this->periodEntryRepository->delete($entry);
-    }
-
-    /**
-     * Sets the quantity of each given service for the period: one entry per service, removed when quantity is 0.
-     *
-     * @param  array<int, float>  $quantitiesByServiceId
-     */
-    public function syncEntries(Period $period, array $quantitiesByServiceId): void
-    {
-        DB::transaction(function () use ($period, $quantitiesByServiceId) {
-            $this->periodEntryRepository->deleteForPeriodAndServices($period->id, array_keys($quantitiesByServiceId));
-
-            foreach ($quantitiesByServiceId as $serviceId => $quantity) {
-                if ($quantity > 0) {
-                    $this->addEntry($period, $serviceId, $quantity);
-                }
-            }
-        });
     }
 
     /**
@@ -165,6 +157,22 @@ class PeriodsService extends CoreService
 
             $period->status = PeriodStatuses::CLOSED;
             $period->closed_at = $now;
+            $this->periodRepository->save($period);
+        });
+
+        return $period->refresh();
+    }
+
+    /**
+     * Entries are kept; the totals fixed at closing are dropped and get recalculated on the next close.
+     */
+    public function reopen(Period $period): Period
+    {
+        DB::transaction(function () use ($period) {
+            $this->periodMaterialTotalRepository->deleteForPeriod($period->id);
+
+            $period->status = PeriodStatuses::OPEN;
+            $period->closed_at = null;
             $this->periodRepository->save($period);
         });
 

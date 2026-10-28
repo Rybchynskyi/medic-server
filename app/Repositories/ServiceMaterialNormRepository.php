@@ -19,6 +19,14 @@ class ServiceMaterialNormRepository extends CoreRepository
         );
     }
 
+    /**
+     * @return int number of deleted norms
+     */
+    public function deleteForOrganizationExcept(int $organizationId, array $keptIds): int
+    {
+        return $this->model->where('organization_id', $organizationId)->whereNotIn('id', $keptIds)->delete();
+    }
+
     public function findByServiceIds(array $serviceIds)
     {
         return $this->model->with('material')->whereIn('service_id', $serviceIds)->get();

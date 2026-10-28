@@ -33,9 +33,4 @@ class PeriodEntryRepository extends CoreRepository
             ->where('period_id', $periodId)
             ->first();
     }
-
-    public function deleteForPeriodAndServices(int $periodId, array $serviceIds): void
-    {
-        $this->model->where('period_id', $periodId)->whereIn('service_id', $serviceIds)->delete();
-    }
 }

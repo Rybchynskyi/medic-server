@@ -50,7 +50,7 @@ class DirectoryImportTest extends TestCase
         $this->actingAs($this->admin)
             ->post("/api/admin/organizations/{$this->organization->identifier}/import/material-norms", ['file' => $file])
             ->assertOk()
-            ->assertJsonPath('message', 'Імпортовано норм витрат: 3.');
+            ->assertJsonPath('message', 'Імпортовано послуг: 3, норм витрат: 3.');
 
         $services = Service::where('organization_id', $this->organization->id)->orderBy('code')->pluck('name', 'code');
         $this->assertSame([
@@ -62,26 +62,83 @@ class DirectoryImportTest extends TestCase
         $this->assertSame(3, ServiceMaterialNorm::count());
     }
 
-    public function test_services_import_stores_section_headers_as_category(): void
+    public function test_sections_and_units_are_taken_from_nch_sheet_and_wrong_names_are_fixed(): void
     {
+        Service::create(['identifier' => 'srv000000001', 'organization_id' => $this->organization->id, 'code' => '060', 'name' => '37.355239254793']);
+
         $file = $this->makeWorkbook([
-            'Лист1' => [
+            'КАЛЬК_2_1' => [['КОД ПОСЛУГИ', 'ПРЯМІ ВИТРАТИ'], ['060', 37.35]],
+            'НЧ' => [
                 ['Код послуги', 'Найменування послуги', 'Одиниця виміру'],
                 [null, 'Фізіотерапія'],
                 ['060', 'Міостимуляція', 'процедура'],
                 [null, 'Інші послуги'],
                 ['070', 'Білірубінометрія', 'дослідження'],
             ],
+            'МАТ' => [
+                ['Код послуги', 'Найменування послуги', 'Матеріал', 'Одиниця виміру', 'Витрати на одну послугу'],
+                ['060', 'Міостимуляція', 'Гель', 'г', 5],
+                ['070', 'Білірубінометрія', 'Серветка', 'шт', 1],
+            ],
         ]);
 
-        $this->actingAs($this->admin)
-            ->post("/api/admin/organizations/{$this->organization->identifier}/import/services", ['file' => $file])
-            ->assertOk();
+        $this->import($file)->assertOk();
 
+        $services = Service::orderBy('code')->get(['code', 'name', 'unit', 'category'])->toArray();
         $this->assertSame([
-            '060' => 'Фізіотерапія',
-            '070' => 'Інші послуги',
-        ], Service::orderBy('code')->pluck('category', 'code')->all());
+            ['code' => '060', 'name' => 'Міостимуляція', 'unit' => 'процедура', 'category' => 'Фізіотерапія'],
+            ['code' => '070', 'name' => 'Білірубінометрія', 'unit' => 'дослідження', 'category' => 'Інші послуги'],
+        ], $services);
+    }
+
+    public function test_reimport_deletes_norms_missing_from_the_file(): void
+    {
+        $this->import($this->makeWorkbook(['МАТ' => [
+            ['Код послуги', 'Найменування послуги', 'Матеріал', 'Одиниця виміру', 'Витрати на одну послугу'],
+            ['1084', 'Консультація', 'Маска', 'шт', 1],
+            ['1084', null, 'Рукавички', 'пара', 1],
+        ]]))->assertOk();
+
+        $this->import($this->makeWorkbook(['МАТ' => [
+            ['Код послуги', 'Найменування послуги', 'Матеріал', 'Одиниця виміру', 'Витрати на одну послугу'],
+            ['1084', 'Консультація', 'Маска', 'шт', 2],
+        ]]))
+            ->assertOk()
+            ->assertJsonPath('message', 'Імпортовано послуг: 1, норм витрат: 1. Видалено норм, яких немає у файлі: 1.');
+
+        $norm = ServiceMaterialNorm::with('material')->sole();
+        $this->assertSame('Маска', $norm->material->name);
+        $this->assertEquals(2, $norm->quantity_per_service);
+    }
+
+    public function test_sheet_with_numbers_instead_of_service_names_is_rejected(): void
+    {
+        $file = $this->makeWorkbook(['Лист1' => [
+            ['КОД ПОСЛУГИ', 'ПРЯМІ ВИТРАТИ'],
+            ['1084', 37.355239254793, 0, 3.1],
+        ]]);
+
+        $this->import($file)->assertStatus(422);
+
+        $this->assertSame(0, Service::count());
+    }
+
+    public function test_workbook_without_mat_sheet_is_rejected(): void
+    {
+        $file = $this->makeWorkbook([
+            'НЧ' => [['Код послуги', 'Найменування послуги'], ['060', 'Міостимуляція']],
+            'ФОП' => [['Код послуги'], ['060']],
+        ]);
+
+        $this->import($file)
+            ->assertStatus(422)
+            ->assertJsonPath('errors.file.0', 'У файлі немає листа «МАТ» з нормами витрат матеріалів.');
+    }
+
+    private function import(UploadedFile $file)
+    {
+        return $this->actingAs($this->admin)
+            ->postJson("/api/admin/organizations/{$this->organization->identifier}/import/material-norms", ['file' => $file]);
     }
 
     private function makeWorkbook(array $sheets): UploadedFile

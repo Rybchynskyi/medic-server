@@ -16,4 +16,9 @@ class PeriodPolicy extends CorePolicy
     {
         return $this->hasAccess($user, $period) && $period->isOpen();
     }
+
+    public function canReopen(User $user, Period $period): bool
+    {
+        return $this->hasAccess($user, $period) && ! $period->isOpen();
+    }
 }

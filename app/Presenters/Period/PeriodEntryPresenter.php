@@ -12,6 +12,9 @@ class PeriodEntryPresenter extends CorePresenter
         return [
             'identifier' => $entry->identifier,
             'quantity' => (float) $entry->quantity,
+            'createdAt' => $entry->created_at,
+            'updatedAt' => $entry->updated_at,
+            'createdBy' => $entry->creator?->name,
             'service' => [
                 'identifier' => $entry->service->identifier,
                 'code' => $entry->service->code,

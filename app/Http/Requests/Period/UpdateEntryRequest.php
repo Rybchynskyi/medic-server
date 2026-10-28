@@ -14,7 +14,14 @@ class UpdateEntryRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'quantity' => ['required', 'numeric', 'min:0.01'],
+            'quantity' => ['required', 'numeric', 'gt:0'],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'quantity.gt' => 'Кількість має бути більшою за нуль. Щоб прибрати запис, видаліть його.',
         ];
     }
 }

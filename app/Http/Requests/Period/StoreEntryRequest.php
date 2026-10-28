@@ -14,8 +14,16 @@ class StoreEntryRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'serviceIdentifier' => ['required', 'string', 'exists:services,identifier'],
-            'quantity' => ['required', 'numeric', 'min:0.01'],
+            'entries' => ['required', 'array', 'min:1'],
+            'entries.*.serviceIdentifier' => ['required', 'string', 'distinct'],
+            'entries.*.quantity' => ['required', 'numeric', 'gt:0'],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'entries.*.quantity.gt' => 'Кількість має бути більшою за нуль.',
         ];
     }
 }

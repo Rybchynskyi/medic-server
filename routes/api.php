@@ -36,7 +36,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::post('/periods/{identifier}/close', [PeriodsController::class, 'close']);
         Route::get('/periods/{identifier}/export', [PeriodsController::class, 'export']);
         Route::post('/periods/{identifier}/entries', [PeriodsController::class, 'storeEntry']);
-        Route::put('/periods/{identifier}/entries', [PeriodsController::class, 'syncEntries']);
+        Route::post('/periods/{identifier}/reopen', [PeriodsController::class, 'reopen']);
         Route::put('/periods/{identifier}/entries/{entryIdentifier}', [PeriodsController::class, 'updateEntry']);
         Route::delete('/periods/{identifier}/entries/{entryIdentifier}', [PeriodsController::class, 'destroyEntry']);
     });
@@ -61,7 +61,6 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::put('/organizations/{identifier}', [OrganizationsController::class, 'update']);
         Route::delete('/organizations/{identifier}', [OrganizationsController::class, 'destroy']);
 
-        Route::post('/organizations/{identifier}/import/services', [DirectoryImportController::class, 'services']);
         Route::post('/organizations/{identifier}/import/material-norms', [DirectoryImportController::class, 'materialNorms']);
     });
 });
